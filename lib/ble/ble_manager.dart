@@ -77,12 +77,20 @@ class BleManager {
     }
   }
 
-  Future<void> connect(BleDevice device) {
-    throw UnimplementedError('BLE connection will be implemented after protocol verification.');
+  Future<BleConnectionDetails> connect(BleDevice device) async {
+    final bluetoothDevice = BluetoothDevice.fromId(device.id);
+    await bluetoothDevice.connect(license: License.nonprofit);
+    try {
+      final services = await bluetoothDevice.discoverServices();
+      return BleConnectionDetails(device: device.copyWith(isConnected: true), services: services);
+    } catch (_) {
+      await bluetoothDevice.disconnect();
+      rethrow;
+    }
   }
 
-  Future<void> disconnect(BleDevice device) {
-    throw UnimplementedError('BLE disconnection will be implemented after protocol verification.');
+  Future<void> disconnect(BleDevice device) async {
+    await BluetoothDevice.fromId(device.id).disconnect();
   }
 
   String _normalizeUuid(String value) {
@@ -91,4 +99,11 @@ class BleManager {
     if (normalized.length == 8) return '$normalized-0000-1000-8000-00805f9b34fb';
     return normalized;
   }
+}
+
+class BleConnectionDetails {
+  const BleConnectionDetails({required this.device, required this.services});
+
+  final BleDevice device;
+  final List<BluetoothService> services;
 }

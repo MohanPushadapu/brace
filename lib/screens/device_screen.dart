@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../ble/ble_device.dart';
 import '../ble/ble_manager.dart';
@@ -15,6 +16,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   final _serviceController = TextEditingController(text: 'FFE0');
   final _bleManager = BleManager();
   final _favoriteIds = <String>{};
+  final _connectedIds = <String>{};
   List<BleDevice> _devices = [];
   bool _scanning = false;
   String? _scanError;
@@ -79,6 +81,39 @@ class _DeviceScreenState extends State<DeviceScreen> {
     });
   }
 
+  Future<void> _connect(BleDevice device) async {
+    var status = 'Connecting to ${device.name}...';
+    var connected = false;
+    var services = <BluetoothService>[];
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(builder: (context, setSheetState) {
+          if (!connected && services.isEmpty && status.startsWith('Connecting')) {
+            _bleManager.connect(device).then((details) {
+              if (!mounted) return;
+              setState(() => _connectedIds.add(device.id));
+              setSheetState(() {
+                connected = true;
+                services = details.services;
+                status = 'Connected and services discovered';
+              });
+            }).catchError((error) {
+              setSheetState(() => status = 'Connection failed: $error');
+            });
+          }
+          return _ConnectionSheet(device: device, status: status, services: services, connected: connected, onDisconnect: () async {
+            await _bleManager.disconnect(device);
+            if (mounted) setState(() => _connectedIds.remove(device.id));
+            if (context.mounted) Navigator.of(context).pop();
+          });
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final devices = _visibleDevices;
@@ -105,7 +140,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
           if (devices.isEmpty && !_scanning)
             const _MessagePanel(icon: Icons.bluetooth_searching_rounded, message: 'No devices yet. Press scan to look for nearby Bluetooth devices.', color: Color(0xFF0E7C72))
           else
-            ...devices.map((device) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _DeviceTile(device: device, favorite: _favoriteIds.contains(device.id), onFavorite: () => _toggleFavorite(device)))),
+            ...devices.map((device) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _DeviceTile(device: device, favorite: _favoriteIds.contains(device.id), connected: _connectedIds.contains(device.id), onFavorite: () => _toggleFavorite(device), onConnect: () => _connect(device)))),
           const SizedBox(height: 18),
           _SetupPanel(open: _setupOpen, serviceController: _serviceController, onToggle: () => setState(() => _setupOpen = !_setupOpen)),
         ],
@@ -115,11 +150,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
 }
 
 class _DeviceTile extends StatelessWidget {
-  const _DeviceTile({required this.device, required this.favorite, required this.onFavorite});
+  const _DeviceTile({required this.device, required this.favorite, required this.connected, required this.onFavorite, required this.onConnect});
 
   final BleDevice device;
   final bool favorite;
+  final bool connected;
   final VoidCallback onFavorite;
+  final VoidCallback onConnect;
 
   @override
   Widget build(BuildContext context) {
@@ -131,10 +168,39 @@ class _DeviceTile extends StatelessWidget {
         leading: const CircleAvatar(backgroundColor: Color(0xFFEAF5F1), child: Icon(Icons.bluetooth_rounded, color: Color(0xFF0E7C72))),
         title: Text(device.name, style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text('${device.id}  ·  RSSI ${device.rssi ?? '--'}', style: const TextStyle(fontSize: 11, color: Color(0xFF84918D))),
-        trailing: IconButton(onPressed: onFavorite, tooltip: favorite ? 'Remove favorite' : 'Favorite device', icon: Icon(favorite ? Icons.star_rounded : Icons.star_border_rounded, color: favorite ? const Color(0xFFE0A642) : const Color(0xFF84918D))),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(onPressed: onFavorite, tooltip: favorite ? 'Remove favorite' : 'Favorite device', icon: Icon(favorite ? Icons.star_rounded : Icons.star_border_rounded, color: favorite ? const Color(0xFFE0A642) : const Color(0xFF84918D))),
+          IconButton(onPressed: onConnect, tooltip: connected ? 'View connection' : 'Connect', icon: Icon(connected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_rounded, color: connected ? const Color(0xFF0E7C72) : const Color(0xFF6D7C77))),
+        ]),
       ),
     );
   }
+}
+
+class _ConnectionSheet extends StatelessWidget {
+  const _ConnectionSheet({required this.device, required this.status, required this.services, required this.connected, required this.onDisconnect});
+
+  final BleDevice device;
+  final String status;
+  final List<BluetoothService> services;
+  final bool connected;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [const Icon(Icons.bluetooth_connected_rounded, color: Color(0xFF0E7C72)), const SizedBox(width: 10), Expanded(child: Text(device.name, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800))), if (connected) const Icon(Icons.check_circle_rounded, color: Color(0xFF0E7C72))]),
+    const SizedBox(height: 8),
+    Text(status, style: const TextStyle(color: Color(0xFF6D7C77))),
+    if (!connected && status.startsWith('Connecting')) ...[const SizedBox(height: 18), const LinearProgressIndicator()],
+    if (connected) ...[
+      const SizedBox(height: 18),
+      Text('${services.length} service${services.length == 1 ? '' : 's'} found', style: const TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      if (services.isEmpty) const Text('The device connected but did not report any services.', style: TextStyle(color: Color(0xFF6D7C77))) else ...services.map((service) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('${service.uuid.str}  ·  ${service.characteristics.length} characteristic${service.characteristics.length == 1 ? '' : 's'}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)))),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(onPressed: onDisconnect, icon: const Icon(Icons.bluetooth_disabled_rounded), label: const Text('Disconnect')),
+    ],
+  ])));
 }
 
 class _MessagePanel extends StatelessWidget {
