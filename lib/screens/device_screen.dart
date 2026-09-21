@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ble/ble_device.dart';
 import '../ble/ble_manager.dart';
@@ -12,6 +13,7 @@ class DeviceScreen extends StatefulWidget {
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
+  static const _favoriteDevicesKey = 'favorite_bluetooth_device_ids';
   final _searchController = TextEditingController();
   final _serviceController = TextEditingController(text: 'FFE0');
   final _bleManager = BleManager();
@@ -26,6 +28,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_refreshList);
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    final preferences = await SharedPreferences.getInstance();
+    final savedIds = preferences.getStringList(_favoriteDevicesKey) ?? const <String>[];
+    if (mounted) setState(() => _favoriteIds.addAll(savedIds));
   }
 
   @override
@@ -79,6 +88,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     setState(() {
       if (!_favoriteIds.add(device.id)) _favoriteIds.remove(device.id);
     });
+    SharedPreferences.getInstance().then((preferences) => preferences.setStringList(_favoriteDevicesKey, _favoriteIds.toList()));
   }
 
   Future<void> _connect(BleDevice device) async {
