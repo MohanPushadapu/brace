@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ble/ble_device.dart';
 import '../ble/ble_manager.dart';
-import 'ble_test_screen.dart';
 
 class DeviceScreen extends StatefulWidget {
   const DeviceScreen({super.key});
@@ -92,21 +91,17 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _connect(BleDevice device) async {
-    try {
-      final details = await showModalBottomSheet<BleConnectionDetails>(
-        context: context,
-        isScrollControlled: true,
-        builder: (_) => _ConnectingSheet(device: device, manager: _bleManager),
-      );
-      if (details == null || !mounted) return;
-      if (!mounted) return;
-      setState(() => _connectedIds.add(device.id));
-      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BleTestScreen(initialDetails: details)));
-      if (mounted) setState(() => _connectedIds.remove(device.id));
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _scanError = 'Connection failed: $error');
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ConnectingSheet(device: device, manager: _bleManager, onConnected: () {
+        if (mounted) setState(() => _connectedIds.add(device.id));
+      }, onDisconnected: () {
+        if (mounted) setState(() {
+          _connectedIds.remove(device.id);
+        });
+      }),
+    );
   }
 
   @override
@@ -173,17 +168,21 @@ class _DeviceTile extends StatelessWidget {
 }
 
 class _ConnectingSheet extends StatefulWidget {
-  const _ConnectingSheet({required this.device, required this.manager});
+  const _ConnectingSheet({required this.device, required this.manager, required this.onConnected, required this.onDisconnected});
 
   final BleDevice device;
   final BleManager manager;
+  final VoidCallback onConnected;
+  final VoidCallback onDisconnected;
 
   @override
   State<_ConnectingSheet> createState() => _ConnectingSheetState();
 }
 
 class _ConnectingSheetState extends State<_ConnectingSheet> {
+  String _status = 'Connecting and discovering services...';
   String? _error;
+  BleConnectionDetails? _details;
 
   @override
   void initState() {
@@ -193,8 +192,16 @@ class _ConnectingSheetState extends State<_ConnectingSheet> {
 
   Future<void> _connectAndDiscover() async {
     try {
-      final details = await widget.manager.connect(widget.device);
-      if (mounted) Navigator.of(context).pop(details);
+      final details = await widget.manager.connect(widget.device, onStatus: (status) {
+        if (mounted) setState(() => _status = status);
+      });
+      if (mounted) {
+        widget.onConnected();
+        setState(() {
+          _details = details;
+          _status = 'Connected. Services discovered.';
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = 'Connection failed: $error');
     }
@@ -205,9 +212,21 @@ class _ConnectingSheetState extends State<_ConnectingSheet> {
     return SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [const Icon(Icons.bluetooth_searching_rounded, color: Color(0xFF0E7C72)), const SizedBox(width: 10), Expanded(child: Text(widget.device.name, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)))]),
       const SizedBox(height: 8),
-      Text(_error ?? 'Connecting and discovering services...', style: TextStyle(color: _error == null ? const Color(0xFF6D7C77) : const Color(0xFFE05D43))),
+      Text(_error ?? _status, style: TextStyle(color: _error == null ? const Color(0xFF6D7C77) : const Color(0xFFE05D43))),
       const SizedBox(height: 18),
-      if (_error == null) const LinearProgressIndicator(),
+      if (_error == null && _details == null) const LinearProgressIndicator(),
+      if (_details != null) ...[
+        const SizedBox(height: 18),
+        Text('${_details!.services.length} service${_details!.services.length == 1 ? '' : 's'} found', style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        if (_details!.services.isEmpty) const Text('The device connected but did not report any services.', style: TextStyle(color: Color(0xFF6D7C77))) else ..._details!.services.map((service) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('${service.uuid.str}  ·  ${service.characteristics.length} characteristic${service.characteristics.length == 1 ? '' : 's'}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)))),
+        const SizedBox(height: 10),
+        Row(children: [
+          OutlinedButton.icon(onPressed: () async { await widget.manager.disconnect(widget.device); widget.onDisconnected(); if (mounted) Navigator.of(context).pop(); }, icon: const Icon(Icons.bluetooth_disabled_rounded), label: const Text('Disconnect')),
+          const SizedBox(width: 10),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+        ]),
+      ],
       if (_error != null) ...[
         const SizedBox(height: 14),
         Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))),

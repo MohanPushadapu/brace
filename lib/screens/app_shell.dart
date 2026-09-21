@@ -5,7 +5,6 @@ import 'history_screen.dart';
 import 'home_screen.dart';
 import 'session_screen.dart';
 import 'account_screen.dart';
-import 'ble_test_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, this.isPhysician = false});
@@ -29,7 +28,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: [..._screens, AccountScreen(isPhysician: widget.isPhysician), const BleTestScreen()]),
+      body: IndexedStack(index: _selectedIndex, children: [..._screens, AccountScreen(isPhysician: widget.isPhysician)]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),
@@ -41,7 +40,6 @@ class _AppShellState extends State<AppShell> {
           NavigationDestination(icon: Icon(Icons.play_circle_outline_rounded), label: 'Session'),
           NavigationDestination(icon: Icon(Icons.insights_rounded), label: 'History'),
           NavigationDestination(icon: Icon(Icons.person_outline_rounded), label: 'Account'),
-          NavigationDestination(icon: Icon(Icons.science_outlined), label: 'BLE Test'),
         ],
       ),
     );

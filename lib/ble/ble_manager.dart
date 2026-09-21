@@ -77,11 +77,15 @@ class BleManager {
     }
   }
 
-  Future<BleConnectionDetails> connect(BleDevice device) async {
+  Future<BleConnectionDetails> connect(BleDevice device, {Duration timeout = const Duration(seconds: 15), void Function(String status)? onStatus}) async {
     final bluetoothDevice = BluetoothDevice.fromId(device.id);
-    await bluetoothDevice.connect(license: License.nonprofit);
+    onStatus?.call('Connecting to device...');
+    if (!bluetoothDevice.isConnected) {
+      await bluetoothDevice.connect(license: License.nonprofit, timeout: timeout);
+    }
     try {
-      final services = await bluetoothDevice.discoverServices();
+      onStatus?.call('Connected. Discovering services...');
+      final services = await bluetoothDevice.discoverServices(timeout: timeout.inSeconds);
       return BleConnectionDetails(device: device.copyWith(isConnected: true), services: services);
     } catch (_) {
       await bluetoothDevice.disconnect();
