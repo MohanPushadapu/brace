@@ -17,21 +17,28 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
+  final _deviceScreenKey = GlobalKey<DeviceScreenState>();
 
-  static const _screens = [
+  List<Widget> get _screens => [
     HomeScreen(),
-    DeviceScreen(),
+    DeviceScreen(key: _deviceScreenKey),
     SessionScreen(),
     HistoryScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final screens = _screens;
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: [..._screens, AccountScreen(isPhysician: widget.isPhysician)]),
+      body: IndexedStack(index: _selectedIndex, children: [...screens, AccountScreen(isPhysician: widget.isPhysician)]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          if (_selectedIndex == 1 && index != 1) {
+            _deviceScreenKey.currentState?.stopScanning();
+          }
+          setState(() => _selectedIndex = index);
+        },
         backgroundColor: Colors.white,
         indicatorColor: const Color(0xFFD8EEE7),
         destinations: const [

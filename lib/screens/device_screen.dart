@@ -1,17 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ble/ble_device.dart';
 import '../ble/ble_manager.dart';
+import 'device_details_screen.dart';
 
 class DeviceScreen extends StatefulWidget {
   const DeviceScreen({super.key});
 
   @override
-  State<DeviceScreen> createState() => _DeviceScreenState();
+  State<DeviceScreen> createState() => DeviceScreenState();
 }
 
-class _DeviceScreenState extends State<DeviceScreen> {
+class DeviceScreenState extends State<DeviceScreen> {
   static const _favoriteDevicesKey = 'favorite_bluetooth_device_ids';
   final _searchController = TextEditingController();
   final _serviceController = TextEditingController(text: 'FFE0');
@@ -68,6 +71,12 @@ class _DeviceScreenState extends State<DeviceScreen> {
     }
   }
 
+  void stopScanning() {
+    if (!_scanning) return;
+    unawaited(_bleManager.stopScan());
+    if (mounted) setState(() => _scanning = false);
+  }
+
   void _refreshList() => setState(() {});
 
   List<BleDevice> get _visibleDevices {
@@ -91,7 +100,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _connect(BleDevice device) async {
-    await showModalBottomSheet<void>(
+    final details = await showModalBottomSheet<BleConnectionDetails>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _ConnectingSheet(device: device, manager: _bleManager, onConnected: () {
@@ -102,6 +111,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
         });
       }),
     );
+    if (details == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DeviceDetailsScreen(details: details, onDisconnected: () {
+      if (mounted) setState(() => _connectedIds.remove(device.id));
+    })));
   }
 
   @override
@@ -224,6 +237,8 @@ class _ConnectingSheetState extends State<_ConnectingSheet> {
         Row(children: [
           OutlinedButton.icon(onPressed: () async { await widget.manager.disconnect(widget.device); widget.onDisconnected(); if (mounted) Navigator.of(context).pop(); }, icon: const Icon(Icons.bluetooth_disabled_rounded), label: const Text('Disconnect')),
           const SizedBox(width: 10),
+          if (_details != null) FilledButton.icon(onPressed: () => Navigator.of(context).pop(_details), icon: const Icon(Icons.open_in_new_rounded), label: const Text('Device details')),
+          if (_details != null) const SizedBox(width: 10),
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
         ]),
       ],
