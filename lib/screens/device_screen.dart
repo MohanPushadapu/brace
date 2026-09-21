@@ -93,7 +93,12 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   Future<void> _connect(BleDevice device) async {
     try {
-      final details = await _bleManager.connect(device);
+      final details = await showModalBottomSheet<BleConnectionDetails>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => _ConnectingSheet(device: device, manager: _bleManager),
+      );
+      if (details == null || !mounted) return;
       if (!mounted) return;
       setState(() => _connectedIds.add(device.id));
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BleTestScreen(initialDetails: details)));
@@ -164,6 +169,50 @@ class _DeviceTile extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+class _ConnectingSheet extends StatefulWidget {
+  const _ConnectingSheet({required this.device, required this.manager});
+
+  final BleDevice device;
+  final BleManager manager;
+
+  @override
+  State<_ConnectingSheet> createState() => _ConnectingSheetState();
+}
+
+class _ConnectingSheetState extends State<_ConnectingSheet> {
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectAndDiscover();
+  }
+
+  Future<void> _connectAndDiscover() async {
+    try {
+      final details = await widget.manager.connect(widget.device);
+      if (mounted) Navigator.of(context).pop(details);
+    } catch (error) {
+      if (mounted) setState(() => _error = 'Connection failed: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [const Icon(Icons.bluetooth_searching_rounded, color: Color(0xFF0E7C72)), const SizedBox(width: 10), Expanded(child: Text(widget.device.name, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)))]),
+      const SizedBox(height: 8),
+      Text(_error ?? 'Connecting and discovering services...', style: TextStyle(color: _error == null ? const Color(0xFF6D7C77) : const Color(0xFFE05D43))),
+      const SizedBox(height: 18),
+      if (_error == null) const LinearProgressIndicator(),
+      if (_error != null) ...[
+        const SizedBox(height: 14),
+        Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))),
+      ],
+    ])));
   }
 }
 
