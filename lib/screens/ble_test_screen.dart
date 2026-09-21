@@ -7,7 +7,9 @@ import '../ble/ble_device.dart';
 import '../ble/ble_manager.dart';
 
 class BleTestScreen extends StatefulWidget {
-  const BleTestScreen({super.key});
+  const BleTestScreen({super.key, this.initialDetails});
+
+  final BleConnectionDetails? initialDetails;
 
   @override
   State<BleTestScreen> createState() => _BleTestScreenState();
@@ -23,6 +25,17 @@ class _BleTestScreenState extends State<BleTestScreen> {
   bool _scanning = false;
   bool _connecting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final details = widget.initialDetails;
+    if (details != null) {
+      _selected = details.device;
+      _services = details.services;
+      _addLog('Opened connected device with ${details.services.length} discovered service(s).');
+    }
+  }
 
   @override
   void dispose() {
